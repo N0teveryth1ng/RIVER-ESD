@@ -1,0 +1,202 @@
+<!-- frontend/user_account.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>User Account</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 600px;
+      margin: 2rem auto;
+      padding: 1rem;
+      background: #f9f9f9;
+      border-radius: 8px;
+      box-shadow: 0 0 8px #ccc;
+    }
+    h1 {
+      color: #333;
+    }
+    #balance {
+      font-weight: bold;
+      margin-bottom: 1rem;
+    }
+    label, input, button {
+      display: block;
+      width: 100%;
+      margin-bottom: 1rem;
+      font-size: 1rem;
+    }
+    input {
+      padding: 0.5rem;
+      border: 1px solid #aaa;
+      border-radius: 4px;
+    }
+    button {
+      background-color: #007bff;
+      color: white;
+      border: none;
+      padding: 0.6rem;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    button:hover {
+      background-color: #0056b3;
+    }
+    #message {
+      margin-top: 1rem;
+      color: green;
+    }
+  </style>
+  <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+</head>
+<body>
+
+  <h1>Welcome, <span id="username"></span></h1>
+  <div id="balance">Wallet Balance: ₹<span id="wallet-balance">0</span></div>
+
+  <h2>Add Funds to Wallet</h2>
+  <label for="fund-amount">Enter Amount (₹):</label>
+  <input type="number" id="fund-amount" min="1" placeholder="Enter amount" />
+  <button onclick="startPayment()">Add Funds</button>
+
+  <div id="message"></div>
+
+<script>
+  // Get username and token from localStorage
+  const token = localStorage.getItem("token");
+  if (!token) {
+    alert("You are not logged in! Redirecting to login...");
+    window.location.href = "/login.html";
+  }
+
+  // Decode username from token (simple base64 decode)
+  function parseJwt(token) {
+    try {
+      const base64Url = token.split('.')[1];
+      const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+      const jsonPayload = decodeURIComponent(atob(base64).split('').map(function(c) {
+          return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+      }).join(''));
+      return JSON.parse(jsonPayload);
+    } catch {
+      return null;
+    }
+  }
+
+  const payload = parseJwt(token);
+  const username = payload ? payload.sub : "User";
+  document.getElementById("username").innerText = username;
+
+  // Fetch wallet balance from backend (mock or implement real endpoint)
+  async function fetchBalance() {
+    // Here you can create a backend API to get balance, but for now let's just mock:
+    // You may want to create a new GET /wallet-balance endpoint in FastAPI that returns balance.
+    // For demo, we'll simulate by fetching /add-funds with zero amount (or adjust as you like)
+    // But better to create dedicated GET endpoint - I can help with that if you want.
+    
+    // For now, let's just show dummy zero balance (you can replace this)
+    document.getElementById("wallet-balance").innerText = "Loading...";
+
+    try {
+      const res = await fetch("http://localhost:8000/get-balance", {
+        method: "GET",
+        headers: {
+          "Authorization": "Bearer " + token
+        }
+      });
+      const data = await res.json();
+      if (data.balance !== undefined) {
+        document.getElementById("wallet-balance").innerText = data.balance.toFixed(2);
+      } else {
+        document.getElementById("wallet-balance").innerText = "0.00";
+      }
+    } catch {
+      document.getElementById("wallet-balance").innerText = "0.00";
+    }
+  }
+
+  fetchBalance();
+
+  async function startPayment() {
+    const amountInput = document.getElementById("fund-amount");
+    const amount = parseFloat(amountInput.value);
+    const messageDiv = document.getElementById("message");
+    messageDiv.innerText = "";
+
+    if (!amount || amount <= 0) {
+      alert("Please enter a valid amount greater than zero.");
+      return;
+    }
+
+    try {
+      // Create order on backend
+      const res = await fetch("http://localhost:8000/create-payment", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer " + token
+        },
+        body: JSON.stringify({ amount })
+      });
+      const data = await res.json();
+
+      if (data.error) {
+        alert("Error: " + data.error);
+        return;
+      }
+
+      // Razorpay options
+      const options = {
+        key: data.razorpay_key,
+        amount: data.amount,
+        currency: "INR",
+        order_id: data.order_id,
+        name: "GridSim Wallet",
+        description: "Add funds to wallet",
+        handler: async function (response) {
+          // On successful payment, update wallet balance in backend
+          messageDiv.innerText = "Payment successful! Updating wallet...";
+
+          // Call backend endpoint to add funds after payment success
+          // For demo, assuming /add-funds accepts bearer token & amount
+          const updateRes = await fetch("http://localhost:8000/add-funds", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": "Bearer " + token
+            },
+            body: JSON.stringify({ amount })
+          });
+          const updateData = await updateRes.json();
+
+          if (updateData.new_balance !== undefined) {
+            messageDiv.innerText = `Funds added successfully! New balance: ₹${updateData.new_balance.toFixed(2)}`;
+            document.getElementById("wallet-balance").innerText = updateData.new_balance.toFixed(2);
+          } else {
+            messageDiv.innerText = "Funds added but failed to fetch new balance.";
+          }
+        },
+        prefill: {
+          name: username
+        },
+        theme: {
+          color: "#007bff"
+        }
+      };
+
+      const rzp = new Razorpay(options);
+      rzp.open();
+
+      rzp.on('payment.failed', function (response){
+        alert("Payment failed: " + response.error.description);
+      });
+
+    } catch (err) {
+      alert("Payment error: " + err.message);
+    }
+  }
+</script>
+
+</body>
+</html>

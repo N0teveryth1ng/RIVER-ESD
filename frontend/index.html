@@ -1,0 +1,55 @@
+<input type="text" id="userId" placeholder="Enter your user ID">
+<input type="number" id="fundAmount" placeholder="Enter amount to add">
+<button onclick="addFunds()">Add Funds</button>
+
+<input type="number" id="energy" placeholder="Enter energy demand (kWh)">
+<button onclick="makeOrder()">Buy Energy</button>
+
+<pre id="output"></pre>
+
+<script>
+async function addFunds() {
+    const userId = document.getElementById("userId").value;
+    const amount = Number(document.getElementById("fundAmount").value);
+    const token = localStorage.getItem("token");
+
+    const res = await fetch("http://localhost:8000/add-funds", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ user_id: userId, amount })
+    });
+
+    const data = await res.json();
+    document.getElementById("output").textContent = JSON.stringify(data, null, 2);
+}
+
+
+async function makeOrder() {
+    const userId = document.getElementById("userId").value;
+    const demand = Number(document.getElementById("energy").value);
+    const token = localStorage.getItem("token");
+
+    const res = await fetch("http://localhost:8000/make-order", { 
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+            buyer_id: userId,
+            demand: demand,
+            sellers: [
+                { id: "S1", available_energy: 3000 },
+                { id: "S2", available_energy: 4000 },
+                { id: "S3", available_energy: 3000 }
+            ]
+        })
+    });
+    const data = await res.json();
+    document.getElementById("output").textContent = JSON.stringify(data, null, 2);
+}
+a
+</script>

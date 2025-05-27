@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>User Wallet</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+        }
+        .container {
+            max-width: 400px;
+            margin: auto;
+        }
+        input, button {
+            width: 100%;
+            padding: 10px;
+            margin: 8px 0;
+        }
+        .balance {
+            margin-top: 20px;
+            font-size: 1.2em;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h2>Welcome, <span id="username"></span></h2>
+
+    <div class="balance">Wallet Balance: ₹<span id="walletBalance">0</span></div>
+
+    <input type="number" id="fundAmount" placeholder="Enter amount to add" />
+    <button onclick="initiatePayment()">Add to Wallet</button>
+</div>
+
+<script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+<script>
+    let token = localStorage.getItem("token");
+    let username = "";
+
+    async function getUserInfo() {
+        const res = await fetch("http://localhost:8000/me", {
+            headers: { Authorization: `Bearer ${token}` }
+        });
+        const data = await res.json();
+        if (data.username) {
+            username = data.username;
+            document.getElementById("username").innerText = username;
+        }
+    }
+
+    async function initiatePayment() {
+        const amount = Number(document.getElementById("fundAmount").value);
+        if (!amount || amount <= 0) {
+            alert("Enter a valid amount");
+            return;
+        }
+
+        const res = await fetch("http://localhost:8000/create-payment", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`
+            },
+            body: JSON.stringify({ amount })
+        });
+
+        const data = await res.json();
+
+        if (data.error) {
+            return alert(data.error);
+        }
+
+        const options = {
+            key: data.razorpay_key,
+            amount: data.amount,
+            currency: "INR",
+            name: "GridSim Wallet",
+            description: "Wallet Recharge",
+            order_id: data.order_id,
+            handler: async function (response) {
+                const confirmRes = await fetch("http://localhost:8000/add-funds", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        Authorization: `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ amount })
+                });
+
+                const confirmData = await confirmRes.json();
+                alert(confirmData.message);
+                document.getElementById("walletBalance").innerText = confirmData.balance;
+            },
+            prefill: {
+                name: username,
+                email: "",
+                contact: ""
+            },
+            theme: {
+                color: "#3399cc"
+            }
+        };
+
+        const rzp = new Razorpay(options);
+        rzp.open();
+    }
+
+    getUserInfo();
+</script>
+</body>
+</html>
